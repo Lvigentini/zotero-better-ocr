@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Better OCR (Python Bridge)",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Zero-config OCR for Zotero 7. Uses embedded Tesseract and Poppler to convert PDFs to text notes.",
   "author": "Lvigentini <l.vigentini@gmail.com>",
   "homepage_url": "https://github.com/Lvigentini/zotero-better-ocr",

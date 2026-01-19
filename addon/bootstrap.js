@@ -16,34 +16,24 @@ function addToWindow(win) {
 	let doc = win.document;
 	let menu = doc.getElementById('zotero-itemmenu');
 	
-    if (!menu) {
-        Zotero.debug("Better OCR: zotero-itemmenu not found in window");
-        return;
-    }
+    if (!menu) return;
 
-    // CLEANUP: Remove any existing item first (duplicates safety)
     let existing = doc.getElementById('better-ocr-menu-item');
     if (existing) existing.remove();
 
-    // CREATE ELEMENT (Zotero 7 / XUL Compatible)
-    // Zotero 7 uses XHTML/XUL hybrid. 'createXULElement' is the safest way for UI widgets.
     let menuItem;
     if (doc.createXULElement) {
         menuItem = doc.createXULElement('menuitem');
     } else {
-        // Fallback for older Zotero or standard DOM
         menuItem = doc.createElementNS('http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul', 'menuitem');
     }
 
 	menuItem.setAttribute('id', 'better-ocr-menu-item');
 	menuItem.setAttribute('label', 'Extract Text (Better OCR)');
 	menuItem.setAttribute('class', 'menuitem-iconic');
-    // menuItem.setAttribute('image', rootURI + 'icon.png'); // Icon optional
-
 	menuItem.addEventListener('command', performOCR, false);
 	
 	menu.appendChild(menuItem);
-    Zotero.debug("Better OCR: Menu item added");
 	mainMenu = menuItem;
 }
 
@@ -93,20 +83,32 @@ async function performOCR() {
 	}
 
     if (pdfItems.length === 0) {
-        alert("Better OCR: No PDF attachments found for the selected item(s).");
+        alert("Better OCR: No PDF attachments found.");
         return;
     }
 
-	Zotero.showZoteroPaneProgressMeter("Running Better OCR...");
+    // Modern Progress Window
+    let pw = new Zotero.ProgressWindow();
+    pw.changeHeadline("Better OCR");
+    pw.show();
+    let prog = new pw.ItemProgress("chrome://zotero/skin/tick.png", "Starting OCR...");
+    prog.setProgress(10);
+
 	try {
+        let count = 0;
 		for (let attachmentItem of pdfItems) {
+            count++;
+            prog.setText(`Processing ${count}/${pdfItems.length}: ${attachmentItem.getField('title').substring(0, 30)}...`);
+            prog.setProgress((count / pdfItems.length) * 100);
+            
 			await processItem(attachmentItem);
 		}
+        prog.setText("OCR Complete.");
+        pw.startCloseTimer(3000);
 	} catch (e) {
 		Zotero.logError(e);
-		alert("Error during OCR: " + e);
-	} finally {
-		Zotero.hideZoteroPaneProgressMeter();
+        prog.setError();
+        prog.setText("Error: " + e);
 	}
 }
 
@@ -137,10 +139,12 @@ async function processItem(attachmentItem) {
 	}
 }
 
-function runBundledExecutable(pdfPath) {
-	return new Promise((resolve, reject) => {
-        let addon = Zotero.getInstalledExtensions().find(x => x.id == "better-ocr@lvigentini");
-        if (!addon) return reject("Plugin ID not found!"); 
+async function runBundledExecutable(pdfPath) {
+	return new Promise(async (resolve, reject) => {
+        // FIX: await the promise
+        let addons = await Zotero.getInstalledExtensions();
+        let addon = addons.find(x => x.id == "better-ocr@lvigentini");
+        if (!addon) return reject("Plugin ID 'better-ocr@lvigentini' not found."); 
         
         let exeFile = addon.rootDir.clone(); 
         exeFile.append("bin");
