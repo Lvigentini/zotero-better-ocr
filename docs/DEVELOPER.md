@@ -39,22 +39,44 @@ The build script expects a `libs` folder in the root directory containing the ra
 
 ---
 
-## 3. Build the Engine
-This compiles the Python logic and the `libs` content into a single executable.
+## 3. Release Process (Versioning)
 
+Before building, verify or increment the version number.
+
+**Check current version:**
+Look at `addon/manifest.json`.
+
+**Increment version (automatic):**
 ```bash
-python scripts/build_exe.py
+# Bumps patch (1.0.0 -> 1.0.1)
+python scripts/bump_version.py
+
+# Bumps minor (1.0.1 -> 1.1.0)
+python scripts/bump_version.py minor
 ```
-*Output:* `dist/BetterOCR_Tool.exe` (Windows) or `dist/BetterOCR_Tool` (Mac).
 
-## 4. Package the Plugin
-This zips the Zotero addon code (`addon/`) along with the generated Engine (`dist/`).
+---
 
-```bash
-python scripts/assemble_distribution.py
-```
-*Output:* `BetterOCR_Windows.xpi` (or `_Darwin.xpi`).
+## 4. Build & Package
 
-## 5. Release
-1.  Create a new Release on GitHub.
-2.  Upload the `.xpi` files generated from both Windows and Mac build environments.
+1.  **Build the Engine:**
+    ```bash
+    python scripts/build_exe.py
+    ```
+    *Output:* `dist/BetterOCR_Tool.exe` (Windows) or `dist/BetterOCR_Tool` (Mac).
+
+2.  **Package the Plugin:**
+    ```bash
+    python scripts/assemble_distribution.py
+    ```
+    *Output:* `BetterOCR_Windows_v1.0.1.xpi` (or `_Darwin_v1.0.1.xpi`).
+
+## 5. Publish
+1.  Commit the version bump to Git.
+    ```bash
+    git add addon/manifest.json
+    git commit -m "Bump version to 1.0.1"
+    git push
+    ```
+2.  Create a new Release on GitHub.
+3.  Upload the `.xpi` files generated from both Windows and Mac build environments.

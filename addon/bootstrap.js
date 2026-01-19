@@ -53,8 +53,12 @@ async function performOCR() {
 }
 
 async function processItem(attachmentItem) {
+    // Robust path retrieval
 	let pdfPath = await attachmentItem.getFilePathAsync();
-	if (!pdfPath) return;
+	if (!pdfPath) {
+        Zotero.debug("Better OCR: No path for item " + attachmentItem.id);
+        return;
+    }
 
 	try {
 		await runBundledExecutable(pdfPath);
@@ -87,14 +91,12 @@ function runBundledExecutable(pdfPath) {
         let exeFile = addon.rootDir.clone(); 
         exeFile.append("bin");
         
-        // Detect OS and choose binary name
         var xulRuntime = Components.classes["@mozilla.org/xre/app-info;1"]
                            .getService(Components.interfaces.nsIXULRuntime);
         
         if (xulRuntime.OS == "WINNT") {
             exeFile.append("BetterOCR_Tool.exe");
         } else {
-            // Mac (Darwin) or Linux
             exeFile.append("BetterOCR_Tool");
         }
 
@@ -102,16 +104,19 @@ function runBundledExecutable(pdfPath) {
             return reject("Embedded Engine not found at: " + exeFile.path);
         }
         
-        // On Mac/Linux, we might need to ensure execution permissions
+        // Ensure execution permissions on Unix
         if (xulRuntime.OS != "WINNT") {
             try {
                 exeFile.permissions |= 0o755;
-            } catch(e) { Zotero.debug("Could not set permissions: " + e); }
+            } catch(e) {}
         }
 
 		let process = Components.classes["@mozilla.org/process/util;1"]
 					.createInstance(Components.interfaces.nsIProcess);
 		process.init(exeFile);
+        
+        // Pass path as a single argument. 
+        // nsIProcess handles spaces in arguments automatically.
 		let args = [pdfPath];
 
 		process.runAsync(args, args.length, {
