@@ -87,7 +87,6 @@ async function performOCR() {
         return;
     }
 
-    // Modern Progress Window
     let pw = new Zotero.ProgressWindow();
     pw.changeHeadline("Better OCR");
     pw.show();
@@ -141,10 +140,13 @@ async function processItem(attachmentItem) {
 
 async function runBundledExecutable(pdfPath) {
 	return new Promise(async (resolve, reject) => {
-        // FIX: await the promise
         let addons = await Zotero.getInstalledExtensions();
+        
+        // DEBUG: List all IDs
+        Zotero.debug("Better OCR: Found Addons: " + addons.map(a => a.id).join(", "));
+
         let addon = addons.find(x => x.id == "better-ocr@lvigentini");
-        if (!addon) return reject("Plugin ID 'better-ocr@lvigentini' not found."); 
+        if (!addon) return reject("Plugin ID 'better-ocr@lvigentini' not found. Saw: " + addons.map(a => a.id).join(", ")); 
         
         let exeFile = addon.rootDir.clone(); 
         exeFile.append("bin");
