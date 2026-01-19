@@ -1,0 +1,134 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install Python Deps
+        run: pip install pyinstaller pdf2image pytesseract
+
+      - name: Install Poppler (Windows)
+        shell: powershell
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/oschwartz10612/poppler-windows/releases/download/v24.08.0-0/Release-24.08.0-0.zip" -OutFile poppler.zip
+          Expand-Archive poppler.zip -DestinationPath libs_temp
+          New-Item -ItemType Directory -Force -Path libs
+          # Move the inner folder (e.g., poppler-24.08.0) to libs/poppler
+          $extracted = Get-ChildItem libs_temp | Select-Object -First 1
+          Move-Item $extracted.FullName libs/poppler
+
+      - name: Install Tesseract (Windows)
+        shell: powershell
+        run: |
+          # Download Tesseract Installer (v5.5.0)
+          Invoke-WebRequest -Uri "https://github.com/UB-Mannheim/tesseract/releases/download/v5.5.0.20241111/tesseract-ocr-w64-setup-5.5.0.20241111.exe" -OutFile tesseract_setup.exe
+          
+          # Silent Install to C:\Tesseract
+          Start-Process -FilePath .\tesseract_setup.exe -ArgumentList "/S", "/D=C:\Tesseract" -Wait
+          
+          # Copy to libs/tesseract
+          New-Item -ItemType Directory -Force -Path libs/tesseract
+          Copy-Item -Path "C:\Tesseract\*" -Destination libs/tesseract -Recurse
+
+      - name: Build Engine
+        run: python scripts/build_exe.py
+
+      - name: Assemble XPI
+        run: python scripts/assemble_distribution.py
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: xpi-windows
+          path: xpi/*.xpi
+
+  build-mac:
+    runs-on: macos-13 # Intel Mac (for broadest compatibility via Rosetta on M1)
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install Python Deps
+        run: pip install pyinstaller pdf2image pytesseract
+
+      - name: Install System Deps
+        run: brew install tesseract poppler
+
+      - name: Prepare Libs
+        run: |
+          mkdir -p libs/poppler/bin
+          mkdir -p libs/tesseract/bin
+          
+          # Copy Binaries
+          cp $(brew --prefix poppler)/bin/pdftoppm libs/poppler/bin/
+          cp $(brew --prefix tesseract)/bin/tesseract libs/tesseract/bin/
+          
+          # Tesseract needs tessdata config
+          cp -r $(brew --prefix tesseract)/share/tessdata libs/tesseract/
+          
+      - name: Build Engine
+        run: python scripts/build_exe.py
+
+      - name: Assemble XPI
+        run: python scripts/assemble_distribution.py
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: xpi-mac
+          path: xpi/*.xpi
+
+  release:
+    needs: [build-windows, build-mac]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Download Windows Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: xpi-windows
+          path: release_assets
+
+      - name: Download Mac Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: xpi-mac
+          path: release_assets
+
+      - name: Generate Release Notes
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          echo "## Changes" > release_notes.md
+          if [ -n "$PREV_TAG" ]; then
+            git log --pretty=format:"- %s" $PREV_TAG..HEAD >> release_notes.md
+          else
+            echo "- Initial Release" >> release_notes.md
+          fi
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          body_path: release_notes.md
+          files: release_assets/*.xpi
