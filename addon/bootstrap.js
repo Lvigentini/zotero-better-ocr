@@ -1,7 +1,7 @@
 var mainMenu;
 
 function startup({ id, version, rootURI }) {
-	Zotero.debug("Better OCR: Starting up");
+	Zotero.debug("Better OCR: Starting up (v" + version + ")");
 	addToAllWindows();
 }
 
@@ -15,15 +15,36 @@ function uninstall() {}
 function addToWindow(win) {
 	let doc = win.document;
 	let menu = doc.getElementById('zotero-itemmenu');
-	if (menu) {
-		let menuItem = doc.createElement('menuitem');
-		menuItem.setAttribute('id', 'better-ocr-menu-item');
-		menuItem.setAttribute('label', 'Extract Text (Better OCR)');
-		menuItem.setAttribute('class', 'menuitem-iconic');
-		menuItem.addEventListener('command', performOCR, false);
-		menu.appendChild(menuItem);
-		mainMenu = menuItem;
-	}
+	
+    if (!menu) {
+        Zotero.debug("Better OCR: zotero-itemmenu not found in window");
+        return;
+    }
+
+    // CLEANUP: Remove any existing item first (duplicates safety)
+    let existing = doc.getElementById('better-ocr-menu-item');
+    if (existing) existing.remove();
+
+    // CREATE ELEMENT (Zotero 7 / XUL Compatible)
+    // Zotero 7 uses XHTML/XUL hybrid. 'createXULElement' is the safest way for UI widgets.
+    let menuItem;
+    if (doc.createXULElement) {
+        menuItem = doc.createXULElement('menuitem');
+    } else {
+        // Fallback for older Zotero or standard DOM
+        menuItem = doc.createElementNS('http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul', 'menuitem');
+    }
+
+	menuItem.setAttribute('id', 'better-ocr-menu-item');
+	menuItem.setAttribute('label', 'Extract Text (Better OCR)');
+	menuItem.setAttribute('class', 'menuitem-iconic');
+    // menuItem.setAttribute('image', rootURI + 'icon.png'); // Icon optional
+
+	menuItem.addEventListener('command', performOCR, false);
+	
+	menu.appendChild(menuItem);
+    Zotero.debug("Better OCR: Menu item added");
+	mainMenu = menuItem;
 }
 
 function addToAllWindows() {
@@ -118,7 +139,6 @@ async function processItem(attachmentItem) {
 
 function runBundledExecutable(pdfPath) {
 	return new Promise((resolve, reject) => {
-        // UPDATED ID HERE
         let addon = Zotero.getInstalledExtensions().find(x => x.id == "better-ocr@lvigentini");
         if (!addon) return reject("Plugin ID not found!"); 
         
