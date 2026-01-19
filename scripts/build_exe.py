@@ -21,16 +21,12 @@ def build():
     poppler_src = os.path.join(libs_dir, "poppler")
     tesseract_src = os.path.join(libs_dir, "tesseract")
     
-    # Platform-specific validation
     tesseract_bin = "tesseract.exe" if is_windows else "tesseract"
     
     if not os.path.exists(poppler_src):
         print("ERROR: 'libs/poppler' folder missing!")
         return
 
-    # Check for tesseract binary to confirm correct folder structure
-    # On Mac/Linux, users might put the binary directly in libs/tesseract or libs/tesseract/bin
-    # We'll just check if the folder exists for now to be lenient, but warn if empty.
     if not os.path.exists(tesseract_src):
         print("ERROR: 'libs/tesseract' folder missing!")
         return
@@ -40,12 +36,10 @@ def build():
     # Separator for --add-data (Windows=';', Unix=':')
     sep = ";" if is_windows else ":"
     
-    # Use sys.executable to run module directly
     cmd = [
         sys.executable, "-m", "PyInstaller",
         "--noconfirm",
         "--onefile",
-        "--windowed",
         "--name", "BetterOCR_Tool",
         "--distpath", dist_dir,
         "--workpath", os.path.join(script_dir, "build"),
@@ -54,6 +48,12 @@ def build():
         f"--add-data={tesseract_src}{sep}tesseract",
         os.path.join(script_dir, "portable_ocr.py")
     ]
+    
+    # CRITICAL FIX: Only use --windowed on Windows.
+    # On Mac, --windowed creates a .app bundle which confuses the assembler/Zotero.
+    # We want a raw binary on Mac.
+    if is_windows:
+        cmd.insert(4, "--windowed")
     
     print(f"Running build with: {sys.executable} -m PyInstaller ...")
     print("This may take a minute...")
@@ -69,13 +69,7 @@ def build():
             print(f"\nDONE! Your standalone executable is in: {dist_dir}")
             print(f"File: {output_name}")
         else:
-            # On Mac, --windowed might create an .app bundle
-            app_name = "BetterOCR_Tool.app"
-            app_path = os.path.join(dist_dir, app_name)
-            if os.path.exists(app_path):
-                print(f"\nDONE! Your Mac App Bundle is in: {dist_dir}")
-            else:
-                print("\nWARNING: Build finished but expected output file not found.")
+            print("\nWARNING: Build finished but expected output file not found.")
                 
     except subprocess.CalledProcessError as e:
         print(f"Build Failed: {e}")
