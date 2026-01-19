@@ -2,30 +2,63 @@ var mainMenu;
 
 function startup({ id, version, rootURI }) {
 	Zotero.debug("Better OCR: Starting up");
-	
-	let win = Zotero.getMainWindow();
-	if (win && win.document) {
-		let menu = win.document.getElementById('zotero-itemmenu');
-		if (menu) {
-			let menuItem = win.document.createElement('menuitem');
-			menuItem.setAttribute('id', 'better-ocr-menu-item');
-			menuItem.setAttribute('label', 'Extract Text (Better OCR)');
-			menuItem.addEventListener('command', performOCR, false);
-			menu.appendChild(menuItem);
-			mainMenu = menuItem;
-		}
-	}
+	addToAllWindows();
 }
 
 function shutdown() {
-	if (mainMenu) mainMenu.remove();
+	removeFromAllWindows();
 }
 
 function install() {}
 function uninstall() {}
 
+function addToWindow(win) {
+	let doc = win.document;
+	let menu = doc.getElementById('zotero-itemmenu');
+	if (menu) {
+		let menuItem = doc.createElement('menuitem');
+		menuItem.setAttribute('id', 'better-ocr-menu-item');
+		menuItem.setAttribute('label', 'Extract Text (Better OCR)');
+		menuItem.setAttribute('class', 'menuitem-iconic');
+		menuItem.addEventListener('command', performOCR, false);
+		menu.appendChild(menuItem);
+		mainMenu = menuItem;
+	}
+}
+
+function addToAllWindows() {
+	let windows = Zotero.getMainWindows();
+	for (let win of windows) {
+		addToWindow(win);
+	}
+}
+
+function removeFromAllWindows() {
+	let windows = Zotero.getMainWindows();
+	for (let win of windows) {
+		let doc = win.document;
+		let menuItem = doc.getElementById('better-ocr-menu-item');
+		if (menuItem) menuItem.remove();
+	}
+}
+
+var windowListener = {
+	onOpenWindow: function (xulWin) {
+		let win = xulWin.QueryInterface(Components.interfaces.nsIInterfaceRequestor)
+						.getInterface(Components.interfaces.nsIDOMWindow);
+		win.addEventListener("load", function () {
+			win.removeEventListener("load", arguments.callee, false);
+			addToWindow(win);
+		}, false);
+	},
+	onCloseWindow: function (xulWin) {},
+	onWindowTitleChange: function (xulWin, newTitle) {}
+};
+
 async function performOCR() {
 	var items = Zotero.getActiveZoteroPane().getSelectedItems();
+    if (!items.length) return;
+
     let pdfItems = [];
 	for (let item of items) {
 		if (item.isAttachment() && item.attachmentContentType == 'application/pdf') {
@@ -37,28 +70,28 @@ async function performOCR() {
 			}
 		}
 	}
-    if (pdfItems.length === 0) return alert("No PDFs selected.");
 
-	Zotero.showZoteroPaneProgressMeter("Running Embedded OCR...");
+    if (pdfItems.length === 0) {
+        alert("Better OCR: No PDF attachments found for the selected item(s).");
+        return;
+    }
+
+	Zotero.showZoteroPaneProgressMeter("Running Better OCR...");
 	try {
 		for (let attachmentItem of pdfItems) {
 			await processItem(attachmentItem);
 		}
 	} catch (e) {
 		Zotero.logError(e);
-		alert("Error: " + e);
+		alert("Error during OCR: " + e);
 	} finally {
 		Zotero.hideZoteroPaneProgressMeter();
 	}
 }
 
 async function processItem(attachmentItem) {
-    // Robust path retrieval
 	let pdfPath = await attachmentItem.getFilePathAsync();
-	if (!pdfPath) {
-        Zotero.debug("Better OCR: No path for item " + attachmentItem.id);
-        return;
-    }
+	if (!pdfPath) return;
 
 	try {
 		await runBundledExecutable(pdfPath);
@@ -85,7 +118,8 @@ async function processItem(attachmentItem) {
 
 function runBundledExecutable(pdfPath) {
 	return new Promise((resolve, reject) => {
-        let addon = Zotero.getInstalledExtensions().find(x => x.id == "better-ocr@gemini.user");
+        // UPDATED ID HERE
+        let addon = Zotero.getInstalledExtensions().find(x => x.id == "better-ocr@lvigentini");
         if (!addon) return reject("Plugin ID not found!"); 
         
         let exeFile = addon.rootDir.clone(); 
@@ -104,19 +138,13 @@ function runBundledExecutable(pdfPath) {
             return reject("Embedded Engine not found at: " + exeFile.path);
         }
         
-        // Ensure execution permissions on Unix
         if (xulRuntime.OS != "WINNT") {
-            try {
-                exeFile.permissions |= 0o755;
-            } catch(e) {}
+            try { exeFile.permissions |= 0o755; } catch(e) {}
         }
 
 		let process = Components.classes["@mozilla.org/process/util;1"]
 					.createInstance(Components.interfaces.nsIProcess);
 		process.init(exeFile);
-        
-        // Pass path as a single argument. 
-        // nsIProcess handles spaces in arguments automatically.
 		let args = [pdfPath];
 
 		process.runAsync(args, args.length, {
