@@ -1,15 +1,50 @@
 var mainMenu;
-var pluginRootDir = null;
 
 // Bootstrap Lifecycle
 function startup(data, reason) {
-    pluginRootDir = data.installPath || data.rootDir;
-    Zotero.debug("Better OCR: Startup (v" + data.version + ")");
-    addToAllWindows();
+    Zotero.debug("Better OCR: Startup triggered (v" + data.version + ")");
+    
+    // Initialize Global Namespace
+    if (typeof Zotero.BetterOCR === 'undefined') {
+        Zotero.BetterOCR = {};
+    }
+
+    // DETECT ROOT DIRECTORY
+    let rootDir = null;
+    
+    // Method A: installPath (Standard)
+    if (data.installPath) {
+        rootDir = data.installPath;
+    } 
+    // Method B: resourceURI (Zotero 7 fallback)
+    else if (data.resourceURI) {
+        try {
+            if (data.resourceURI instanceof Components.interfaces.nsIFileURL) {
+                rootDir = data.resourceURI.file;
+            } else {
+                // Try to convert URI string to File
+                let fileHandler = Components.classes["@mozilla.org/network/protocol;1?name=file"]
+                                    .getService(Components.interfaces.nsIFileProtocolHandler);
+                rootDir = fileHandler.getFileFromURLSpec(data.resourceURI.spec);
+            }
+        } catch (e) {
+            Zotero.debug("Better OCR: Failed to resolve resourceURI: " + e);
+        }
+    }
+
+    if (rootDir) {
+        Zotero.BetterOCR.rootDir = rootDir;
+        Zotero.debug("Better OCR: Root directory established at " + rootDir.path);
+    } else {
+        Zotero.debug("Better OCR: FATAL - Could not find installation directory. Data keys: " + Object.keys(data).join(", "));
+    }
+
+	addToAllWindows();
 }
 
 function shutdown(data, reason) {
-    pluginRootDir = null;
+    // Clean up Global
+    delete Zotero.BetterOCR;
 	removeFromAllWindows();
 }
 
@@ -83,8 +118,9 @@ var windowListener = {
 
 // Core Logic
 async function performOCR() {
-    if (!pluginRootDir) {
-        alertUser("Better OCR Error", "Plugin root path is missing. Please restart Zotero.");
+    // Check Global Store
+    if (!Zotero.BetterOCR || !Zotero.BetterOCR.rootDir) {
+        alertUser("Better OCR Error", "Plugin is not initialized correctly (Root Path Missing).\nPlease restart Zotero.");
         return;
     }
 
@@ -94,19 +130,17 @@ async function performOCR() {
     let pdfItems = [];
 	for (let item of items) {
 		if (item.isAttachment() && item.attachmentContentType == 'application/pdf') {
-		
-pdfItems.push(item);
+			pdfItems.push(item);
 		} else if (item.isRegularItem()) {
-			let attachment = await item.getAttachment();
+			let attachment = await item.getBestAttachment();
 			if (attachment && attachment.attachmentContentType == 'application/pdf') {
-			
-pdfItems.push(attachment);
+				pdfItems.push(attachment);
 			}
 		}
 	}
 
     if (pdfItems.length === 0) {
-        alertUser("Better OCR", "No valid PDF attachments found in selection.");
+        alertUser("Better OCR", "No PDF attachments found in selection.");
         return;
     }
 
@@ -121,7 +155,7 @@ pdfItems.push(attachment);
 		for (let attachmentItem of pdfItems) {
             count++;
             let title = attachmentItem.getField('title') || "Unknown";
-            prog.setText(`Processing ${count}/${pdfItems.length}: ${title.substring(0, 30)}...`);
+            prog.setText("Processing " + count + "/" + pdfItems.length + ": " + title.substring(0, 30) + "...");
             prog.setProgress((count / pdfItems.length) * 100);
             
 			await processItem(attachmentItem);
@@ -163,7 +197,7 @@ async function processItem(attachmentItem) {
 			await IOUtils.remove(txtPath);
             Zotero.debug("Better OCR: Success for " + pdfPath);
 		} else {
-            throw new Error("Engine finished but no text file created. Check permissions or Poppler errors.");
+            throw new Error("Engine finished but no text file created. Check logs for errors.");
         }
 	} catch (e) {
 		throw e;
@@ -172,9 +206,10 @@ async function processItem(attachmentItem) {
 
 function runBundledExecutable(pdfPath) {
 	return new Promise((resolve, reject) => {
-        if (!pluginRootDir) return reject("Plugin root dir lost");
+        // USE GLOBAL STORE
+        if (!Zotero.BetterOCR || !Zotero.BetterOCR.rootDir) return reject("Plugin root dir lost");
 
-        let exeFile = pluginRootDir.clone();
+        let exeFile = Zotero.BetterOCR.rootDir.clone();
         exeFile.append("bin");
         
         var xulRuntime = Components.classes["@mozilla.org/xre/app-info;1"]
@@ -195,7 +230,7 @@ function runBundledExecutable(pdfPath) {
         }
 
 		let process = Components.classes["@mozilla.org/process/util;1"]
-						.createInstance(Components.interfaces.nsIProcess);
+					.createInstance(Components.interfaces.nsIProcess);
 		process.init(exeFile);
 		let args = [pdfPath];
 
