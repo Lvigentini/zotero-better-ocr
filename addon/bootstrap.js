@@ -30,7 +30,10 @@ function addToWindow(win) {
 
 	menuItem.setAttribute('id', 'better-ocr-menu-item');
 	menuItem.setAttribute('label', 'Extract Text (Better OCR)');
-	menuItem.setAttribute('class', 'menuitem-iconic');
+    // REMOVED 'menuitem-iconic' to prevent blank display if icon fails
+	// menuItem.setAttribute('class', 'menuitem-iconic'); 
+    // menuItem.setAttribute('image', 'chrome://better-ocr/content/icon.png');
+
 	menuItem.addEventListener('command', performOCR, false);
 	
 	menu.appendChild(menuItem);
@@ -141,12 +144,8 @@ async function processItem(attachmentItem) {
 async function runBundledExecutable(pdfPath) {
 	return new Promise(async (resolve, reject) => {
         let addons = await Zotero.getInstalledExtensions();
-        
-        // DEBUG: List all IDs
-        Zotero.debug("Better OCR: Found Addons: " + addons.map(a => a.id).join(", "));
-
         let addon = addons.find(x => x.id == "better-ocr@lvigentini");
-        if (!addon) return reject("Plugin ID 'better-ocr@lvigentini' not found. Saw: " + addons.map(a => a.id).join(", ")); 
+        if (!addon) return reject("Plugin ID 'better-ocr@lvigentini' not found. Installed: " + addons.map(a => a.id).join(", ")); 
         
         let exeFile = addon.rootDir.clone(); 
         exeFile.append("bin");
