@@ -1,0 +1,17 @@
+{
+  "manifest_version": 2,
+  "name": "Better OCR (Python Bridge)",
+  "version": "1.0.0",
+  "description": "Uses a local Python script to OCR PDFs and add the text as Zotero notes.",
+  "author": "Gemini & User",
+  "applications": {
+    "zotero": {
+      "id": "better-ocr@gemini.user",
+      "update_url": "https://example.com/update.json",
+      "strict_min_version": "6.99.999"
+    }
+  },
+  "icons": {
+    "48": "icon.png"
+  }
+}
